@@ -1,11 +1,8 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
 import plotly.express as px
-import plotly.graph_objects as go
 from datetime import datetime
-import numpy as np
+import io
 
 # Configurar página
 st.set_page_config(
@@ -14,28 +11,6 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
-
-# Estilos
-st.markdown("""
-    <style>
-    .metric-card {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        padding: 20px;
-        border-radius: 10px;
-        text-align: center;
-    }
-    .metric-value {
-        font-size: 32px;
-        font-weight: bold;
-        margin: 10px 0;
-    }
-    .metric-label {
-        font-size: 14px;
-        opacity: 0.9;
-    }
-    </style>
-""", unsafe_allow_html=True)
 
 # Título
 st.title("📊 Marketing Dashboard")
@@ -53,7 +28,10 @@ if uploaded_file is not None:
             try:
                 df = pd.read_csv(file, sep=';', encoding='latin-1')
             except:
-                df = pd.read_csv(file, sep=',', encoding='utf-8')
+                try:
+                    df = pd.read_csv(file, sep=',', encoding='utf-8')
+                except:
+                    df = pd.read_csv(file, sep=';', encoding='utf-8')
             return df
         
         df = load_data(uploaded_file)
@@ -75,9 +53,9 @@ if uploaded_file is not None:
         col_alcance = encontrar_columna(df, ['alcance', 'reach'])
         col_gasto = encontrar_columna(df, ['importe', 'gasto', 'spend', 'cost'])
         col_clics = encontrar_columna(df, ['clics', 'clicks'])
-        col_resultados = encontrar_columna(df, ['resultado', 'conversion'])
+        col_resultados = encontrar_columna(df, ['resultado', 'conversion', 'conversaciones'])
         col_ctr = encontrar_columna(df, ['ctr', 'click-through'])
-        col_campana = encontrar_columna(df, ['campana', 'campaign', 'nombre'])
+        col_campana = encontrar_columna(df, ['campana', 'campaign', 'nombre de la'])
         
         # Mostrar estado de detección
         with st.sidebar.expander("📋 Columnas detectadas"):
@@ -138,25 +116,21 @@ if uploaded_file is not None:
         with col6:
             if col_gasto:
                 valor = df_clean[col_gasto].sum()
-                moneda = "ARS" if "ARS" in df.columns[0] else "$"
-                st.metric("Gasto Total", f"{moneda} {valor:,.2f}")
+                st.metric("Gasto Total", f"ARS {valor:,.2f}")
         
         # ===== SECCIÓN 2: GRÁFICOS =====
         st.markdown("## 📊 Análisis Detallado")
         
         # Filtros
-        col_filtro1, col_filtro2 = st.columns(2)
-        
-        with col_filtro1:
-            if col_ubicacion:
-                ubicaciones = st.multiselect(
-                    "Filtrar por Ubicación:",
-                    options=df_clean[col_ubicacion].unique(),
-                    default=df_clean[col_ubicacion].unique()
-                )
-                df_filtrado = df_clean[df_clean[col_ubicacion].isin(ubicaciones)]
-            else:
-                df_filtrado = df_clean
+        if col_ubicacion:
+            ubicaciones = st.multiselect(
+                "Filtrar por Ubicación:",
+                options=sorted(df_clean[col_ubicacion].dropna().unique()),
+                default=sorted(df_clean[col_ubicacion].dropna().unique())
+            )
+            df_filtrado = df_clean[df_clean[col_ubicacion].isin(ubicaciones)]
+        else:
+            df_filtrado = df_clean
         
         # Gráfico 1: Impresiones por ubicación
         col_grafico1, col_grafico2 = st.columns(2)
@@ -171,7 +145,7 @@ if uploaded_file is not None:
                     title="Impresiones por Ubicación",
                     color_discrete_sequence=['#3b82f6']
                 )
-                fig.update_layout(showlegend=False, height=400)
+                fig.update_layout(showlegend=False, height=400, xaxis_tickangle=-45)
                 st.plotly_chart(fig, use_container_width=True)
         
         # Gráfico 2: Distribución por ubicación (Pastel)
@@ -181,8 +155,7 @@ if uploaded_file is not None:
                 fig = px.pie(
                     values=datos.values,
                     names=datos.index,
-                    title="Distribución de Impresiones",
-                    color_discrete_sequence=px.colors.qualitative.Set3
+                    title="Distribución de Impresiones"
                 )
                 fig.update_layout(height=400)
                 st.plotly_chart(fig, use_container_width=True)
@@ -196,11 +169,11 @@ if uploaded_file is not None:
                 fig = px.bar(
                     x=datos.index,
                     y=datos.values,
-                    labels={'x': 'Ubicación', 'y': 'Gasto'},
+                    labels={'x': 'Ubicación', 'y': 'Gasto (ARS)'},
                     title="Gasto por Ubicación",
                     color_discrete_sequence=['#ef4444']
                 )
-                fig.update_layout(showlegend=False, height=400)
+                fig.update_layout(showlegend=False, height=400, xaxis_tickangle=-45)
                 st.plotly_chart(fig, use_container_width=True)
         
         # Gráfico 4: ROI (Resultados vs Gasto)
@@ -210,17 +183,18 @@ if uploaded_file is not None:
                     col_resultados: 'sum',
                     col_gasto: 'sum'
                 }).reset_index()
-                datos['ROI'] = (datos[col_resultados] / datos[col_gasto]).round(2)
-                datos = datos.sort_values('ROI', ascending=False)
+                datos = datos[datos[col_gasto] > 0]  # Evitar división por cero
+                datos['Costo por Resultado'] = (datos[col_gasto] / datos[col_resultados]).replace([float('inf'), -float('inf')], 0)
+                datos = datos.sort_values('Costo por Resultado', ascending=True)
                 
                 fig = px.bar(
                     datos,
                     x=col_ubicacion,
-                    y='ROI',
-                    title="Resultados por Gasto (ROI)",
+                    y='Costo por Resultado',
+                    title="Costo por Resultado (menor = mejor)",
                     color_discrete_sequence=['#10b981']
                 )
-                fig.update_layout(showlegend=False, height=400)
+                fig.update_layout(showlegend=False, height=400, xaxis_tickangle=-45)
                 st.plotly_chart(fig, use_container_width=True)
         
         # ===== SECCIÓN 3: TABLA DETALLADA =====
@@ -238,39 +212,24 @@ if uploaded_file is not None:
             for col in df_mostrar.columns:
                 if df_mostrar[col].dtype in ['float64', 'int64']:
                     if col == col_gasto:
-                        df_mostrar[col] = df_mostrar[col].apply(lambda x: f"${x:,.2f}" if pd.notna(x) else "N/A")
+                        df_mostrar[col] = df_mostrar[col].apply(lambda x: f"ARS {x:,.2f}" if pd.notna(x) and x > 0 else "N/A")
                     elif col == col_ctr:
                         df_mostrar[col] = df_mostrar[col].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "N/A")
                     else:
-                        df_mostrar[col] = df_mostrar[col].apply(lambda x: f"{int(x):,}" if pd.notna(x) else "N/A")
+                        df_mostrar[col] = df_mostrar[col].apply(lambda x: f"{int(x):,}" if pd.notna(x) and x > 0 else "N/A")
             
             st.dataframe(df_mostrar, use_container_width=True, hide_index=True)
         
         # ===== SECCIÓN 4: DESCARGAS =====
         st.markdown("## 💾 Exportar Datos")
         
-        col_desc1, col_desc2 = st.columns(2)
-        
-        with col_desc1:
-            csv = df_filtrado.to_csv(index=False, sep=';', encoding='latin-1')
-            st.download_button(
-                label="📥 Descargar CSV filtrado",
-                data=csv,
-                file_name=f"marketing_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                mime="text/csv"
-            )
-        
-        with col_desc2:
-            from io import BytesIO
-            buffer = BytesIO()
-            df_filtrado.to_excel(buffer, index=False)
-            buffer.seek(0)
-            st.download_button(
-                label="📥 Descargar Excel",
-                data=buffer,
-                file_name=f"marketing_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
+        csv = df_filtrado.to_csv(index=False, sep=';', encoding='latin-1')
+        st.download_button(
+            label="📥 Descargar CSV filtrado",
+            data=csv,
+            file_name=f"marketing_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+            mime="text/csv"
+        )
         
         # Info del archivo
         st.sidebar.markdown("---")
@@ -293,11 +252,11 @@ else:
     - ✅ Detección automática de columnas
     - ✅ Gráficos interactivos (Plotly)
     - ✅ Filtros dinámicos
-    - ✅ Exportación a CSV y Excel
+    - ✅ Exportación a CSV
     - ✅ Adaptable a cualquier estructura de datos
     
     ### 📋 Formato esperado:
     - Separador: `;` o `,`
     - Encoding: UTF-8 o Latin-1
-    - Incluye columnas como: Ubicación, Impresiones, Alcance, Gasto, etc.
+    - Incluye columnas como: Ubicación, Impresiones, Alcance, Gasto, Resultados, CTR
     """)
