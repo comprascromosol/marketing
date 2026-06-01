@@ -140,7 +140,7 @@ if uploaded_file is not None:
             df_filtrado = df_clean
         
         # Almacenar gráficos para exportar
-        graficos = {}
+        graficos_html = {}
         
         # Gráfico 1: Impresiones por ubicación
         col_grafico1, col_grafico2 = st.columns(2)
@@ -157,7 +157,7 @@ if uploaded_file is not None:
                 )
                 fig.update_layout(showlegend=False, height=400, xaxis_tickangle=-45)
                 st.plotly_chart(fig, use_container_width=True)
-                graficos['impresiones_ubicacion'] = fig
+                graficos_html['impresiones_ubicacion'] = fig.to_html(include_plotlyjs='cdn')
         
         # Gráfico 2: Distribución por ubicación (Pastel)
         with col_grafico2:
@@ -170,7 +170,7 @@ if uploaded_file is not None:
                 )
                 fig.update_layout(height=400)
                 st.plotly_chart(fig, use_container_width=True)
-                graficos['distribucion'] = fig
+                graficos_html['distribucion'] = fig.to_html(include_plotlyjs='cdn')
         
         # Gráfico 3: Gasto por ubicación
         col_grafico3, col_grafico4 = st.columns(2)
@@ -187,7 +187,7 @@ if uploaded_file is not None:
                 )
                 fig.update_layout(showlegend=False, height=400, xaxis_tickangle=-45)
                 st.plotly_chart(fig, use_container_width=True)
-                graficos['gasto_ubicacion'] = fig
+                graficos_html['gasto_ubicacion'] = fig.to_html(include_plotlyjs='cdn')
         
         # Gráfico 4: ROI (Resultados vs Gasto)
         with col_grafico4:
@@ -196,7 +196,7 @@ if uploaded_file is not None:
                     col_resultados: 'sum',
                     col_gasto: 'sum'
                 }).reset_index()
-                datos = datos[datos[col_gasto] > 0]  # Evitar división por cero
+                datos = datos[datos[col_gasto] > 0]
                 datos['Costo por Resultado'] = (datos[col_gasto] / datos[col_resultados]).replace([float('inf'), -float('inf')], 0)
                 datos = datos.sort_values('Costo por Resultado', ascending=True)
                 
@@ -209,7 +209,7 @@ if uploaded_file is not None:
                 )
                 fig.update_layout(showlegend=False, height=400, xaxis_tickangle=-45)
                 st.plotly_chart(fig, use_container_width=True)
-                graficos['roi'] = fig
+                graficos_html['roi'] = fig.to_html(include_plotlyjs='cdn')
         
         # ===== SECCIÓN 3: TABLA DETALLADA =====
         st.markdown("## 📋 Datos Detallados")
@@ -249,108 +249,148 @@ if uploaded_file is not None:
             )
         
         with col_exp2:
-            # Generar PDF con los gráficos
+            # Generar HTML con los gráficos interactivos
             try:
-                from reportlab.lib.pagesizes import letter, landscape
-                from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-                from reportlab.lib.units import inch
-                from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak, Table, TableStyle, Image
-                from reportlab.lib import colors
-                import tempfile
-                import os
+                html_content = """
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="utf-8">
+                    <title>Reporte de Marketing</title>
+                    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+                    <style>
+                        * { margin: 0; padding: 0; box-sizing: border-box; }
+                        body { 
+                            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                            background: #f5f5f5;
+                            padding: 20px;
+                        }
+                        .container { 
+                            max-width: 1400px;
+                            margin: 0 auto;
+                            background: white;
+                            padding: 30px;
+                            border-radius: 8px;
+                            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                        }
+                        h1 { 
+                            color: #1f2937;
+                            text-align: center;
+                            margin-bottom: 10px;
+                            font-size: 32px;
+                        }
+                        .fecha { 
+                            text-align: center;
+                            color: #666;
+                            margin-bottom: 30px;
+                            font-size: 14px;
+                        }
+                        h2 { 
+                            color: #1f2937;
+                            margin-top: 30px;
+                            margin-bottom: 20px;
+                            border-bottom: 3px solid #3b82f6;
+                            padding-bottom: 10px;
+                            font-size: 20px;
+                        }
+                        .kpi-table {
+                            width: 100%;
+                            border-collapse: collapse;
+                            margin-bottom: 30px;
+                        }
+                        .kpi-table th {
+                            background: #3b82f6;
+                            color: white;
+                            padding: 12px;
+                            text-align: left;
+                            font-weight: 600;
+                        }
+                        .kpi-table td {
+                            padding: 12px;
+                            border-bottom: 1px solid #e5e7eb;
+                        }
+                        .kpi-table tr:nth-child(even) {
+                            background: #f9fafb;
+                        }
+                        .graficos-grid {
+                            display: grid;
+                            grid-template-columns: 1fr 1fr;
+                            gap: 30px;
+                            margin: 30px 0;
+                        }
+                        .grafico-container {
+                            background: #f9fafb;
+                            padding: 20px;
+                            border-radius: 8px;
+                            border: 1px solid #e5e7eb;
+                        }
+                        .grafico-container > div {
+                            width: 100%;
+                        }
+                        @media (max-width: 768px) {
+                            .graficos-grid {
+                                grid-template-columns: 1fr;
+                            }
+                        }
+                        @media print {
+                            body { background: white; }
+                            .container { box-shadow: none; }
+                            .grafico-container { page-break-inside: avoid; }
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <h1>📊 Reporte de Marketing</h1>
+                        <div class="fecha">Generado: """ + datetime.now().strftime('%d/%m/%Y %H:%M') + """</div>
+                        
+                        <h2>📈 Resumen de KPIs</h2>
+                        <table class="kpi-table">
+                            <tr>
+                                <th>Métrica</th>
+                                <th>Valor</th>
+                            </tr>
+                """
                 
-                def generar_pdf():
-                    # Crear archivo temporal
-                    pdf_file = io.BytesIO()
-                    
-                    # Crear documento PDF
-                    doc = SimpleDocTemplate(pdf_file, pagesize=landscape(letter), topMargin=0.5*inch, bottomMargin=0.5*inch)
-                    elements = []
-                    
-                    # Estilos
-                    styles = getSampleStyleSheet()
-                    title_style = ParagraphStyle(
-                        'CustomTitle',
-                        parent=styles['Heading1'],
-                        fontSize=24,
-                        textColor=colors.HexColor('#1f2937'),
-                        spaceAfter=6,
-                        alignment=1
-                    )
-                    
-                    # Título
-                    elements.append(Paragraph("📊 Reporte de Marketing", title_style))
-                    elements.append(Paragraph(f"Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}", styles['Normal']))
-                    elements.append(Spacer(1, 0.3*inch))
-                    
-                    # KPIs
-                    elements.append(Paragraph("📈 Resumen de KPIs", styles['Heading2']))
-                    kpi_data = [['Métrica', 'Valor']]
-                    if kpi_alcance:
-                        kpi_data.append(['Alcance', f"{int(kpi_alcance):,}"])
-                    if kpi_impresiones:
-                        kpi_data.append(['Impresiones', f"{int(kpi_impresiones):,}"])
-                    if kpi_resultados:
-                        kpi_data.append(['Resultados', f"{int(kpi_resultados)}"])
-                    if kpi_clics:
-                        kpi_data.append(['Clics', f"{int(kpi_clics)}"])
-                    if kpi_ctr:
-                        kpi_data.append(['CTR Promedio', f"{kpi_ctr:.2f}%"])
-                    if kpi_gasto:
-                        kpi_data.append(['Gasto Total', f"ARS {kpi_gasto:,.2f}"])
-                    
-                    table = Table(kpi_data)
-                    table.setStyle(TableStyle([
-                        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#3b82f6')),
-                        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                        ('FONTSIZE', (0, 0), (-1, 0), 12),
-                        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-                        ('GRID', (0, 0), (-1, -1), 1, colors.black),
-                        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f0f0f0')])
-                    ]))
-                    elements.append(table)
-                    elements.append(Spacer(1, 0.3*inch))
-                    
-                    # Gráficos
-                    elements.append(PageBreak())
-                    elements.append(Paragraph("📊 Gráficos Detallados", styles['Heading2']))
-                    elements.append(Spacer(1, 0.2*inch))
-                    
-                    # Convertir gráficos a imágenes PNG temporales
-                    for nombre, fig in graficos.items():
-                        try:
-                            # Guardar gráfico como imagen PNG temporal
-                            img_bytes = fig.to_image(format="png", width=900, height=500)
-                            img = Image(io.BytesIO(img_bytes), width=7.5*inch, height=4.2*inch)
-                            elements.append(img)
-                            elements.append(Spacer(1, 0.3*inch))
-                            
-                            # Agregar salto de página después de cada 2 gráficos
-                            if nombre != list(graficos.keys())[-1]:
-                                elements.append(PageBreak())
-                        except Exception as e:
-                            st.warning(f"No se pudo incluir gráfico {nombre}")
-                    
-                    # Construir PDF
-                    doc.build(elements)
-                    pdf_file.seek(0)
-                    return pdf_file
+                if kpi_alcance:
+                    html_content += f"<tr><td>Alcance</td><td>{int(kpi_alcance):,}</td></tr>"
+                if kpi_impresiones:
+                    html_content += f"<tr><td>Impresiones</td><td>{int(kpi_impresiones):,}</td></tr>"
+                if kpi_resultados:
+                    html_content += f"<tr><td>Resultados</td><td>{int(kpi_resultados)}</td></tr>"
+                if kpi_clics:
+                    html_content += f"<tr><td>Clics</td><td>{int(kpi_clics)}</td></tr>"
+                if kpi_ctr:
+                    html_content += f"<tr><td>CTR Promedio</td><td>{kpi_ctr:.2f}%</td></tr>"
+                if kpi_gasto:
+                    html_content += f"<tr><td>Gasto Total</td><td>ARS {kpi_gasto:,.2f}</td></tr>"
                 
-                pdf_buffer = generar_pdf()
+                html_content += """
+                        </table>
+                        
+                        <h2>📊 Gráficos Detallados</h2>
+                        <div class="graficos-grid">
+                """
+                
+                for nombre, grafico_html in graficos_html.items():
+                    html_content += f'<div class="grafico-container">{grafico_html}</div>'
+                
+                html_content += """
+                        </div>
+                    </div>
+                </body>
+                </html>
+                """
+                
                 st.download_button(
-                    label="📥 Descargar PDF",
-                    data=pdf_buffer,
-                    file_name=f"marketing_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
-                    mime="application/pdf"
+                    label="📥 Descargar Reporte (HTML)",
+                    data=html_content,
+                    file_name=f"marketing_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
+                    mime="text/html"
                 )
                 
-            except ImportError:
-                st.warning("⚠️ Para descargar PDF, necesitas instalar reportlab. Usa: pip install reportlab")
             except Exception as e:
-                st.error(f"❌ Error al generar PDF: {str(e)}")
+                st.error(f"❌ Error al generar reporte: {str(e)}")
         
         # Info del archivo
         st.sidebar.markdown("---")
@@ -374,7 +414,7 @@ else:
     - ✅ Gráficos interactivos (Plotly)
     - ✅ Filtros dinámicos
     - ✅ Exportación a CSV
-    - ✅ **Descarga PDF directo** con los gráficos
+    - ✅ Exportación a HTML (con gráficos interactivos)
     - ✅ Adaptable a cualquier estructura de datos
     
     ### 📋 Formato esperado:
