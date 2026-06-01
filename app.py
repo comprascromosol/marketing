@@ -88,35 +88,42 @@ if uploaded_file is not None:
         
         col1, col2, col3, col4, col5, col6 = st.columns(6)
         
+        kpi_alcance = None
+        kpi_impresiones = None
+        kpi_resultados = None
+        kpi_clics = None
+        kpi_ctr = None
+        kpi_gasto = None
+        
         with col1:
             if col_alcance:
-                valor = df_clean[col_alcance].sum()
-                st.metric("Alcance", f"{int(valor):,}")
+                kpi_alcance = df_clean[col_alcance].sum()
+                st.metric("Alcance", f"{int(kpi_alcance):,}")
         
         with col2:
             if col_impresiones:
-                valor = df_clean[col_impresiones].sum()
-                st.metric("Impresiones", f"{int(valor):,}")
+                kpi_impresiones = df_clean[col_impresiones].sum()
+                st.metric("Impresiones", f"{int(kpi_impresiones):,}")
         
         with col3:
             if col_resultados:
-                valor = df_clean[col_resultados].sum()
-                st.metric("Resultados", f"{int(valor)}")
+                kpi_resultados = df_clean[col_resultados].sum()
+                st.metric("Resultados", f"{int(kpi_resultados)}")
         
         with col4:
             if col_clics:
-                valor = df_clean[col_clics].sum()
-                st.metric("Clics", f"{int(valor)}")
+                kpi_clics = df_clean[col_clics].sum()
+                st.metric("Clics", f"{int(kpi_clics)}")
         
         with col5:
             if col_ctr:
-                valor = df_clean[col_ctr].mean()
-                st.metric("CTR Promedio", f"{valor:.2f}%")
+                kpi_ctr = df_clean[col_ctr].mean()
+                st.metric("CTR Promedio", f"{kpi_ctr:.2f}%")
         
         with col6:
             if col_gasto:
-                valor = df_clean[col_gasto].sum()
-                st.metric("Gasto Total", f"ARS {valor:,.2f}")
+                kpi_gasto = df_clean[col_gasto].sum()
+                st.metric("Gasto Total", f"ARS {kpi_gasto:,.2f}")
         
         # ===== SECCIÓN 2: GRÁFICOS =====
         st.markdown("## 📊 Análisis Detallado")
@@ -235,7 +242,7 @@ if uploaded_file is not None:
         with col_exp1:
             csv = df_filtrado.to_csv(index=False, sep=';', encoding='latin-1')
             st.download_button(
-                label="📥 Descargar CSV filtrado",
+                label="📥 Descargar CSV",
                 data=csv,
                 file_name=f"marketing_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
                 mime="text/csv"
@@ -244,65 +251,106 @@ if uploaded_file is not None:
         with col_exp2:
             # Generar PDF con los gráficos
             try:
-                from io import BytesIO
-                import plotly.graph_objects as go
+                from reportlab.lib.pagesizes import letter, landscape
+                from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+                from reportlab.lib.units import inch
+                from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak, Table, TableStyle, Image
+                from reportlab.lib import colors
+                import tempfile
+                import os
                 
-                # Crear figura con subplots
-                pdf_figs = list(graficos.values())
-                
-                if pdf_figs:
-                    # Usar plotly para convertir a PDF
-                    pdf_bytes = io.BytesIO()
+                def generar_pdf():
+                    # Crear archivo temporal
+                    pdf_file = io.BytesIO()
                     
-                    # Crear HTML con todos los gráficos
-                    html_content = "<html><head><style>body{font-family: Arial;} .grafico{page-break-after: always; margin: 20px;}</style></head><body>"
-                    html_content += f"<h1>📊 Reporte de Marketing</h1>"
-                    html_content += f"<p>Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}</p>"
-                    html_content += f"<hr>"
+                    # Crear documento PDF
+                    doc = SimpleDocTemplate(pdf_file, pagesize=landscape(letter), topMargin=0.5*inch, bottomMargin=0.5*inch)
+                    elements = []
                     
-                    # Agregar KPIs
-                    html_content += "<h2>📈 Resumen de KPIs</h2>"
-                    html_content += "<table border='1' style='border-collapse: collapse; width: 100%;'>"
-                    if col_alcance:
-                        valor = df_clean[col_alcance].sum()
-                        html_content += f"<tr><td><b>Alcance</b></td><td>{int(valor):,}</td></tr>"
-                    if col_impresiones:
-                        valor = df_clean[col_impresiones].sum()
-                        html_content += f"<tr><td><b>Impresiones</b></td><td>{int(valor):,}</td></tr>"
-                    if col_resultados:
-                        valor = df_clean[col_resultados].sum()
-                        html_content += f"<tr><td><b>Resultados</b></td><td>{int(valor)}</td></tr>"
-                    if col_clics:
-                        valor = df_clean[col_clics].sum()
-                        html_content += f"<tr><td><b>Clics</b></td><td>{int(valor)}</td></tr>"
-                    if col_ctr:
-                        valor = df_clean[col_ctr].mean()
-                        html_content += f"<tr><td><b>CTR Promedio</b></td><td>{valor:.2f}%</td></tr>"
-                    if col_gasto:
-                        valor = df_clean[col_gasto].sum()
-                        html_content += f"<tr><td><b>Gasto Total</b></td><td>ARS {valor:,.2f}</td></tr>"
-                    html_content += "</table>"
-                    html_content += "<hr>"
-                    
-                    # Agregar gráficos como HTML de Plotly
-                    html_content += "<h2>📊 Gráficos</h2>"
-                    for idx, (nombre, fig) in enumerate(graficos.items(), 1):
-                        html_content += f"<div class='grafico'>"
-                        html_content += fig.to_html(include_plotlyjs='cdn')
-                        html_content += f"</div>"
-                    
-                    html_content += "</body></html>"
-                    
-                    # Guardar como archivo HTML descargable
-                    st.download_button(
-                        label="📥 Descargar Reporte (HTML)",
-                        data=html_content,
-                        file_name=f"marketing_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
-                        mime="text/html"
+                    # Estilos
+                    styles = getSampleStyleSheet()
+                    title_style = ParagraphStyle(
+                        'CustomTitle',
+                        parent=styles['Heading1'],
+                        fontSize=24,
+                        textColor=colors.HexColor('#1f2937'),
+                        spaceAfter=6,
+                        alignment=1
                     )
                     
+                    # Título
+                    elements.append(Paragraph("📊 Reporte de Marketing", title_style))
+                    elements.append(Paragraph(f"Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}", styles['Normal']))
+                    elements.append(Spacer(1, 0.3*inch))
+                    
+                    # KPIs
+                    elements.append(Paragraph("📈 Resumen de KPIs", styles['Heading2']))
+                    kpi_data = [['Métrica', 'Valor']]
+                    if kpi_alcance:
+                        kpi_data.append(['Alcance', f"{int(kpi_alcance):,}"])
+                    if kpi_impresiones:
+                        kpi_data.append(['Impresiones', f"{int(kpi_impresiones):,}"])
+                    if kpi_resultados:
+                        kpi_data.append(['Resultados', f"{int(kpi_resultados)}"])
+                    if kpi_clics:
+                        kpi_data.append(['Clics', f"{int(kpi_clics)}"])
+                    if kpi_ctr:
+                        kpi_data.append(['CTR Promedio', f"{kpi_ctr:.2f}%"])
+                    if kpi_gasto:
+                        kpi_data.append(['Gasto Total', f"ARS {kpi_gasto:,.2f}"])
+                    
+                    table = Table(kpi_data)
+                    table.setStyle(TableStyle([
+                        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#3b82f6')),
+                        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                        ('FONTSIZE', (0, 0), (-1, 0), 12),
+                        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f0f0f0')])
+                    ]))
+                    elements.append(table)
+                    elements.append(Spacer(1, 0.3*inch))
+                    
+                    # Gráficos
+                    elements.append(PageBreak())
+                    elements.append(Paragraph("📊 Gráficos Detallados", styles['Heading2']))
+                    elements.append(Spacer(1, 0.2*inch))
+                    
+                    # Convertir gráficos a imágenes PNG temporales
+                    for nombre, fig in graficos.items():
+                        try:
+                            # Guardar gráfico como imagen PNG temporal
+                            img_bytes = fig.to_image(format="png", width=900, height=500)
+                            img = Image(io.BytesIO(img_bytes), width=7.5*inch, height=4.2*inch)
+                            elements.append(img)
+                            elements.append(Spacer(1, 0.3*inch))
+                            
+                            # Agregar salto de página después de cada 2 gráficos
+                            if nombre != list(graficos.keys())[-1]:
+                                elements.append(PageBreak())
+                        except Exception as e:
+                            st.warning(f"No se pudo incluir gráfico {nombre}")
+                    
+                    # Construir PDF
+                    doc.build(elements)
+                    pdf_file.seek(0)
+                    return pdf_file
+                
+                pdf_buffer = generar_pdf()
+                st.download_button(
+                    label="📥 Descargar PDF",
+                    data=pdf_buffer,
+                    file_name=f"marketing_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+                    mime="application/pdf"
+                )
+                
+            except ImportError:
+                st.warning("⚠️ Para descargar PDF, necesitas instalar reportlab. Usa: pip install reportlab")
             except Exception as e:
-                st.warning(f"No se pudo generar el PDF: {str(e)}")
+                st.error(f"❌ Error al generar PDF: {str(e)}")
         
         # Info del archivo
         st.sidebar.markdown("---")
@@ -326,7 +374,7 @@ else:
     - ✅ Gráficos interactivos (Plotly)
     - ✅ Filtros dinámicos
     - ✅ Exportación a CSV
-    - ✅ Exportación a HTML (con gráficos)
+    - ✅ **Descarga PDF directo** con los gráficos
     - ✅ Adaptable a cualquier estructura de datos
     
     ### 📋 Formato esperado:
