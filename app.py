@@ -132,6 +132,9 @@ if uploaded_file is not None:
         else:
             df_filtrado = df_clean
         
+        # Almacenar gráficos para exportar
+        graficos = {}
+        
         # Gráfico 1: Impresiones por ubicación
         col_grafico1, col_grafico2 = st.columns(2)
         
@@ -147,6 +150,7 @@ if uploaded_file is not None:
                 )
                 fig.update_layout(showlegend=False, height=400, xaxis_tickangle=-45)
                 st.plotly_chart(fig, use_container_width=True)
+                graficos['impresiones_ubicacion'] = fig
         
         # Gráfico 2: Distribución por ubicación (Pastel)
         with col_grafico2:
@@ -159,6 +163,7 @@ if uploaded_file is not None:
                 )
                 fig.update_layout(height=400)
                 st.plotly_chart(fig, use_container_width=True)
+                graficos['distribucion'] = fig
         
         # Gráfico 3: Gasto por ubicación
         col_grafico3, col_grafico4 = st.columns(2)
@@ -175,6 +180,7 @@ if uploaded_file is not None:
                 )
                 fig.update_layout(showlegend=False, height=400, xaxis_tickangle=-45)
                 st.plotly_chart(fig, use_container_width=True)
+                graficos['gasto_ubicacion'] = fig
         
         # Gráfico 4: ROI (Resultados vs Gasto)
         with col_grafico4:
@@ -196,6 +202,7 @@ if uploaded_file is not None:
                 )
                 fig.update_layout(showlegend=False, height=400, xaxis_tickangle=-45)
                 st.plotly_chart(fig, use_container_width=True)
+                graficos['roi'] = fig
         
         # ===== SECCIÓN 3: TABLA DETALLADA =====
         st.markdown("## 📋 Datos Detallados")
@@ -223,13 +230,79 @@ if uploaded_file is not None:
         # ===== SECCIÓN 4: DESCARGAS =====
         st.markdown("## 💾 Exportar Datos")
         
-        csv = df_filtrado.to_csv(index=False, sep=';', encoding='latin-1')
-        st.download_button(
-            label="📥 Descargar CSV filtrado",
-            data=csv,
-            file_name=f"marketing_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-            mime="text/csv"
-        )
+        col_exp1, col_exp2 = st.columns(2)
+        
+        with col_exp1:
+            csv = df_filtrado.to_csv(index=False, sep=';', encoding='latin-1')
+            st.download_button(
+                label="📥 Descargar CSV filtrado",
+                data=csv,
+                file_name=f"marketing_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                mime="text/csv"
+            )
+        
+        with col_exp2:
+            # Generar PDF con los gráficos
+            try:
+                from io import BytesIO
+                import plotly.graph_objects as go
+                
+                # Crear figura con subplots
+                pdf_figs = list(graficos.values())
+                
+                if pdf_figs:
+                    # Usar plotly para convertir a PDF
+                    pdf_bytes = io.BytesIO()
+                    
+                    # Crear HTML con todos los gráficos
+                    html_content = "<html><head><style>body{font-family: Arial;} .grafico{page-break-after: always; margin: 20px;}</style></head><body>"
+                    html_content += f"<h1>📊 Reporte de Marketing</h1>"
+                    html_content += f"<p>Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}</p>"
+                    html_content += f"<hr>"
+                    
+                    # Agregar KPIs
+                    html_content += "<h2>📈 Resumen de KPIs</h2>"
+                    html_content += "<table border='1' style='border-collapse: collapse; width: 100%;'>"
+                    if col_alcance:
+                        valor = df_clean[col_alcance].sum()
+                        html_content += f"<tr><td><b>Alcance</b></td><td>{int(valor):,}</td></tr>"
+                    if col_impresiones:
+                        valor = df_clean[col_impresiones].sum()
+                        html_content += f"<tr><td><b>Impresiones</b></td><td>{int(valor):,}</td></tr>"
+                    if col_resultados:
+                        valor = df_clean[col_resultados].sum()
+                        html_content += f"<tr><td><b>Resultados</b></td><td>{int(valor)}</td></tr>"
+                    if col_clics:
+                        valor = df_clean[col_clics].sum()
+                        html_content += f"<tr><td><b>Clics</b></td><td>{int(valor)}</td></tr>"
+                    if col_ctr:
+                        valor = df_clean[col_ctr].mean()
+                        html_content += f"<tr><td><b>CTR Promedio</b></td><td>{valor:.2f}%</td></tr>"
+                    if col_gasto:
+                        valor = df_clean[col_gasto].sum()
+                        html_content += f"<tr><td><b>Gasto Total</b></td><td>ARS {valor:,.2f}</td></tr>"
+                    html_content += "</table>"
+                    html_content += "<hr>"
+                    
+                    # Agregar gráficos como HTML de Plotly
+                    html_content += "<h2>📊 Gráficos</h2>"
+                    for idx, (nombre, fig) in enumerate(graficos.items(), 1):
+                        html_content += f"<div class='grafico'>"
+                        html_content += fig.to_html(include_plotlyjs='cdn')
+                        html_content += f"</div>"
+                    
+                    html_content += "</body></html>"
+                    
+                    # Guardar como archivo HTML descargable
+                    st.download_button(
+                        label="📥 Descargar Reporte (HTML)",
+                        data=html_content,
+                        file_name=f"marketing_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
+                        mime="text/html"
+                    )
+                    
+            except Exception as e:
+                st.warning(f"No se pudo generar el PDF: {str(e)}")
         
         # Info del archivo
         st.sidebar.markdown("---")
@@ -253,6 +326,7 @@ else:
     - ✅ Gráficos interactivos (Plotly)
     - ✅ Filtros dinámicos
     - ✅ Exportación a CSV
+    - ✅ Exportación a HTML (con gráficos)
     - ✅ Adaptable a cualquier estructura de datos
     
     ### 📋 Formato esperado:
