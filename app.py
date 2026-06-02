@@ -1,20 +1,22 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 from datetime import datetime
 import io
+from itertools import combinations
 
 # Configurar página
 st.set_page_config(
-    page_title="Marketing Dashboard",
+    page_title="Universal Data Dashboard",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
 # Título
-st.title("📊 Marketing Dashboard")
-st.markdown("*Visualización automática de datos de campañas - CSV adaptable*")
+st.title("📊 Universal Data Dashboard")
+st.markdown("*Visualización automática y adaptable a cualquier tipo de datos - CSV flexible*")
 
 # Sidebar para carga de archivo
 st.sidebar.header("⚙️ Configuración")
@@ -36,337 +38,426 @@ if uploaded_file is not None:
         
         df = load_data(uploaded_file)
         
-        # Función para detectar columnas automáticamente
-        def encontrar_columna(df, palabras_clave):
-            """Busca una columna que coincida con palabras clave"""
-            df_cols = df.columns.tolist()
-            for col in df_cols:
-                col_lower = col.lower()
-                for palabra in palabras_clave:
-                    if palabra.lower() in col_lower:
-                        return col
-            return None
-        
-        # Mapeo de columnas disponibles
-        col_ubicacion = encontrar_columna(df, ['ubicaci', 'placement', 'ubicacion'])
-        col_impresiones = encontrar_columna(df, ['impresiones', 'impressions'])
-        col_alcance = encontrar_columna(df, ['alcance', 'reach'])
-        col_gasto = encontrar_columna(df, ['importe', 'gasto', 'spend', 'cost'])
-        col_clics = encontrar_columna(df, ['clics', 'clicks'])
-        col_resultados = encontrar_columna(df, ['resultado', 'conversion', 'conversaciones'])
-        col_ctr = encontrar_columna(df, ['ctr', 'click-through'])
-        col_campana = encontrar_columna(df, ['campana', 'campaign', 'nombre de la'])
-        
-        # Mostrar estado de detección
-        with st.sidebar.expander("📋 Columnas detectadas"):
-            cols_detectadas = {
-                "Ubicación": col_ubicacion,
-                "Impresiones": col_impresiones,
-                "Alcance": col_alcance,
-                "Gasto": col_gasto,
-                "Clics": col_clics,
-                "Resultados": col_resultados,
-                "CTR": col_ctr,
-                "Campaña": col_campana
-            }
-            for key, val in cols_detectadas.items():
-                st.write(f"**{key}**: {val if val else '❌ No detectada'}")
-        
         st.sidebar.success("✅ Archivo cargado exitosamente")
         
-        # Limpiar datos
-        df_clean = df.copy()
+        # ===== ANÁLISIS DE COLUMNAS =====
         
-        # Convertir columnas numéricas
-        numeric_cols = [col_impresiones, col_alcance, col_gasto, col_clics, col_resultados, col_ctr]
-        for col in numeric_cols:
-            if col and col in df_clean.columns:
-                df_clean[col] = pd.to_numeric(df_clean[col], errors='coerce')
+        # Identificar tipos de columnas
+        numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
+        categorical_cols = df.select_dtypes(include=['object']).columns.tolist()
+        datetime_cols = df.select_dtypes(include=['datetime64']).columns.tolist()
         
-        # ===== SECCIÓN 1: KPIs PRINCIPALES =====
-        st.markdown("## 📈 KPIs Principales")
+        # Información del archivo
+        st.sidebar.markdown("---")
+        with st.sidebar.expander("📋 Información del Archivo"):
+            st.write(f"**Filas:** {len(df):,}")
+            st.write(f"**Columnas:** {len(df.columns)}")
+            st.write(f"**Tamaño:** {uploaded_file.size / 1024:.2f} KB")
+            st.write(f"\n**Columnas Numéricas:** {len(numeric_cols)}")
+            for col in numeric_cols[:5]:
+                st.write(f"  • {col}")
+            if len(numeric_cols) > 5:
+                st.write(f"  • ... y {len(numeric_cols) - 5} más")
+            st.write(f"\n**Columnas Categóricas:** {len(categorical_cols)}")
+            for col in categorical_cols[:5]:
+                st.write(f"  • {col}")
+            if len(categorical_cols) > 5:
+                st.write(f"  • ... y {len(categorical_cols) - 5} más")
         
-        col1, col2, col3, col4, col5, col6 = st.columns(6)
+        # ===== SECCIÓN 1: ESTADÍSTICAS GENERALES =====
+        st.markdown("## 📊 Estadísticas Generales")
         
-        kpi_alcance = None
-        kpi_impresiones = None
-        kpi_resultados = None
-        kpi_clics = None
-        kpi_ctr = None
-        kpi_gasto = None
+        if numeric_cols:
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                st.metric("Total de Filas", f"{len(df):,}")
+            
+            with col2:
+                st.metric("Columnas Numéricas", len(numeric_cols))
+            
+            with col3:
+                st.metric("Columnas Categóricas", len(categorical_cols))
+            
+            with col4:
+                st.metric("Valores Nulos", df.isnull().sum().sum())
+            
+            # Tabla de estadísticas
+            st.markdown("### Resumen Estadístico")
+            st.dataframe(df[numeric_cols].describe().round(2), use_container_width=True)
         
-        with col1:
-            if col_alcance:
-                kpi_alcance = df_clean[col_alcance].sum()
-                st.metric("Alcance", f"{int(kpi_alcance):,}")
+        # ===== SECCIÓN 2: GRÁFICOS INTELIGENTES =====
+        st.markdown("## 📈 Generador de Gráficos")
         
-        with col2:
-            if col_impresiones:
-                kpi_impresiones = df_clean[col_impresiones].sum()
-                st.metric("Impresiones", f"{int(kpi_impresiones):,}")
-        
-        with col3:
-            if col_resultados:
-                kpi_resultados = df_clean[col_resultados].sum()
-                st.metric("Resultados", f"{int(kpi_resultados)}")
-        
-        with col4:
-            if col_clics:
-                kpi_clics = df_clean[col_clics].sum()
-                st.metric("Clics", f"{int(kpi_clics)}")
-        
-        with col5:
-            if col_ctr:
-                kpi_ctr = df_clean[col_ctr].mean()
-                st.metric("CTR Promedio", f"{kpi_ctr:.2f}%")
-        
-        with col6:
-            if col_gasto:
-                kpi_gasto = df_clean[col_gasto].sum()
-                st.metric("Gasto Total", f"ARS {kpi_gasto:,.2f}")
-        
-        # ===== SECCIÓN 2: GRÁFICOS =====
-        st.markdown("## 📊 Análisis Detallado")
-        
-        # Filtros
-        if col_ubicacion:
-            ubicaciones = st.multiselect(
-                "Filtrar por Ubicación:",
-                options=sorted(df_clean[col_ubicacion].dropna().unique()),
-                default=sorted(df_clean[col_ubicacion].dropna().unique())
-            )
-            df_filtrado = df_clean[df_clean[col_ubicacion].isin(ubicaciones)]
-        else:
-            df_filtrado = df_clean
-        
-        # Almacenar gráficos para exportar
         graficos_html = {}
+        graficos_figs = {}
+        graficos_info = []
         
-        # Gráfico 1: Impresiones por ubicación
-        col_grafico1, col_grafico2 = st.columns(2)
-        
-        with col_grafico1:
-            if col_ubicacion and col_impresiones:
-                datos = df_filtrado.groupby(col_ubicacion)[col_impresiones].sum().sort_values(ascending=False)
-                fig = px.bar(
-                    x=datos.index,
-                    y=datos.values,
-                    labels={'x': 'Ubicación', 'y': 'Impresiones'},
-                    title="Impresiones por Ubicación",
-                    color_discrete_sequence=['#3b82f6']
-                )
-                fig.update_layout(showlegend=False, height=400, xaxis_tickangle=-45)
-                st.plotly_chart(fig, use_container_width=True)
-                graficos_html['impresiones_ubicacion'] = fig.to_html(include_plotlyjs='cdn')
-        
-        # Gráfico 2: Distribución por ubicación (Pastel)
-        with col_grafico2:
-            if col_ubicacion and col_impresiones:
-                datos = df_filtrado.groupby(col_ubicacion)[col_impresiones].sum()
-                fig = px.pie(
-                    values=datos.values,
-                    names=datos.index,
-                    title="Distribución de Impresiones"
-                )
-                fig.update_layout(height=400)
-                st.plotly_chart(fig, use_container_width=True)
-                graficos_html['distribucion'] = fig.to_html(include_plotlyjs='cdn')
-        
-        # Gráfico 3: Gasto por ubicación
-        col_grafico3, col_grafico4 = st.columns(2)
-        
-        with col_grafico3:
-            if col_ubicacion and col_gasto:
-                datos = df_filtrado.groupby(col_ubicacion)[col_gasto].sum().sort_values(ascending=False)
-                fig = px.bar(
-                    x=datos.index,
-                    y=datos.values,
-                    labels={'x': 'Ubicación', 'y': 'Gasto (ARS)'},
-                    title="Gasto por Ubicación",
-                    color_discrete_sequence=['#ef4444']
-                )
-                fig.update_layout(showlegend=False, height=400, xaxis_tickangle=-45)
-                st.plotly_chart(fig, use_container_width=True)
-                graficos_html['gasto_ubicacion'] = fig.to_html(include_plotlyjs='cdn')
-        
-        # Gráfico 4: ROI (Resultados vs Gasto)
-        with col_grafico4:
-            if col_ubicacion and col_resultados and col_gasto:
-                datos = df_filtrado.groupby(col_ubicacion).agg({
-                    col_resultados: 'sum',
-                    col_gasto: 'sum'
-                }).reset_index()
-                datos = datos[datos[col_gasto] > 0]
-                datos['Costo por Resultado'] = (datos[col_gasto] / datos[col_resultados]).replace([float('inf'), -float('inf')], 0)
-                datos = datos.sort_values('Costo por Resultado', ascending=True)
+        # Gráficos automáticos por columnas numéricas
+        if numeric_cols:
+            st.markdown("### 📊 Análisis de Columnas Numéricas")
+            
+            # Top columnas por varianza
+            numeric_df = df[numeric_cols].copy()
+            numeric_df = numeric_df.dropna()
+            
+            if len(numeric_df) > 0:
+                # Gráfico 1: Distribución de la primera columna numérica
+                col1, col2 = st.columns(2)
                 
-                fig = px.bar(
-                    datos,
-                    x=col_ubicacion,
-                    y='Costo por Resultado',
-                    title="Costo por Resultado (menor = mejor)",
-                    color_discrete_sequence=['#10b981']
+                with col1:
+                    if len(numeric_cols) >= 1:
+                        col_selected = numeric_cols[0]
+                        fig = px.histogram(
+                            df,
+                            x=col_selected,
+                            nbins=30,
+                            title=f"Distribución de {col_selected}",
+                            color_discrete_sequence=['#3b82f6']
+                        )
+                        fig.update_layout(height=400, showlegend=False)
+                        st.plotly_chart(fig, use_container_width=True)
+                        
+                        # Botón para descargar PDF
+                        st.download_button(
+                            label=f"📥 Descargar {col_selected} (PDF)",
+                            data=fig.to_image(format="pdf", width=1000, height=600),
+                            file_name=f"grafico_distribucion_{col_selected}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+                            mime="application/pdf"
+                        )
+                        
+                        graficos_html[f'distribucion_{col_selected}'] = fig.to_html(include_plotlyjs='cdn')
+                        graficos_figs[f'distribucion_{col_selected}'] = fig
+                        graficos_info.append(f"Distribución de {col_selected}")
+                
+                with col2:
+                    if len(numeric_cols) >= 2:
+                        # Gráfico 2: Correlación de dos primeras columnas
+                        col_x = numeric_cols[0]
+                        col_y = numeric_cols[1]
+                        
+                        fig = px.scatter(
+                            df,
+                            x=col_x,
+                            y=col_y,
+                            title=f"{col_x} vs {col_y}",
+                            color_discrete_sequence=['#ef4444']
+                        )
+                        fig.update_layout(height=400)
+                        st.plotly_chart(fig, use_container_width=True)
+                        
+                        # Botón para descargar PDF
+                        st.download_button(
+                            label=f"📥 Descargar Scatter (PDF)",
+                            data=fig.to_image(format="pdf", width=1000, height=600),
+                            file_name=f"grafico_scatter_{col_x}_{col_y}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+                            mime="application/pdf"
+                        )
+                        
+                        graficos_html[f'scatter_{col_x}_{col_y}'] = fig.to_html(include_plotlyjs='cdn')
+                        graficos_figs[f'scatter_{col_x}_{col_y}'] = fig
+                        graficos_info.append(f"Scatter: {col_x} vs {col_y}")
+        
+        # Gráficos para columnas categóricas
+        if categorical_cols and numeric_cols:
+            st.markdown("### 🎯 Análisis por Categorías")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                if len(categorical_cols) >= 1 and len(numeric_cols) >= 1:
+                    cat_col = categorical_cols[0]
+                    num_col = numeric_cols[0]
+                    
+                    # Agrupar y sumar
+                    datos = df.groupby(cat_col)[num_col].sum().sort_values(ascending=False).head(10)
+                    
+                    fig = px.bar(
+                        x=datos.index,
+                        y=datos.values,
+                        labels={'x': cat_col, 'y': num_col},
+                        title=f"{num_col} por {cat_col}",
+                        color_discrete_sequence=['#10b981']
+                    )
+                    fig.update_layout(height=400, xaxis_tickangle=-45, showlegend=False)
+                    st.plotly_chart(fig, use_container_width=True)
+                    
+                    # Botón para descargar PDF
+                    st.download_button(
+                        label=f"📥 Descargar Barras (PDF)",
+                        data=fig.to_image(format="pdf", width=1000, height=600),
+                        file_name=f"grafico_barras_{cat_col}_{num_col}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+                        mime="application/pdf"
+                    )
+                    
+                    graficos_html[f'bar_{cat_col}_{num_col}'] = fig.to_html(include_plotlyjs='cdn')
+                    graficos_figs[f'bar_{cat_col}_{num_col}'] = fig
+                    graficos_info.append(f"Barras: {num_col} por {cat_col}")
+            
+            with col2:
+                if len(categorical_cols) >= 1 and len(numeric_cols) >= 1:
+                    cat_col = categorical_cols[0]
+                    num_col = numeric_cols[0]
+                    
+                    # Gráfico de pie
+                    datos = df.groupby(cat_col)[num_col].sum().head(10)
+                    
+                    fig = px.pie(
+                        values=datos.values,
+                        names=datos.index,
+                        title=f"Distribución de {num_col} por {cat_col}"
+                    )
+                    fig.update_layout(height=400)
+                    st.plotly_chart(fig, use_container_width=True)
+                    
+                    # Botón para descargar PDF
+                    st.download_button(
+                        label=f"📥 Descargar Pie (PDF)",
+                        data=fig.to_image(format="pdf", width=1000, height=600),
+                        file_name=f"grafico_pie_{cat_col}_{num_col}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+                        mime="application/pdf"
+                    )
+                    
+                    graficos_html[f'pie_{cat_col}_{num_col}'] = fig.to_html(include_plotlyjs='cdn')
+                    graficos_figs[f'pie_{cat_col}_{num_col}'] = fig
+                    graficos_info.append(f"Pie: {num_col} por {cat_col}")
+        
+        # Gráfico de línea temporal si hay series
+        if len(numeric_cols) >= 2:
+            st.markdown("### 📈 Análisis Multi-variable")
+            
+            # Seleccionar columnas para gráfico de línea
+            col_x_select = st.selectbox("Selecciona columna para eje X:", numeric_cols, key="line_x")
+            col_y_select = st.multiselect("Selecciona columnas para eje Y:", 
+                                          [c for c in numeric_cols if c != col_x_select],
+                                          default=[numeric_cols[1]] if len(numeric_cols) > 1 else [])
+            
+            if col_y_select:
+                # Crear gráfico de líneas
+                df_sorted = df.sort_values(col_x_select)
+                
+                fig = go.Figure()
+                colors = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6']
+                
+                for idx, col_y in enumerate(col_y_select):
+                    fig.add_trace(go.Scatter(
+                        x=df_sorted[col_x_select],
+                        y=df_sorted[col_y],
+                        mode='lines+markers',
+                        name=col_y,
+                        line=dict(color=colors[idx % len(colors)], width=2),
+                        marker=dict(size=6)
+                    ))
+                
+                fig.update_layout(
+                    title=f"{col_x_select} vs {', '.join(col_y_select)}",
+                    xaxis_title=col_x_select,
+                    yaxis_title="Valores",
+                    height=450,
+                    hovermode='x unified'
                 )
-                fig.update_layout(showlegend=False, height=400, xaxis_tickangle=-45)
+                
                 st.plotly_chart(fig, use_container_width=True)
-                graficos_html['roi'] = fig.to_html(include_plotlyjs='cdn')
+                
+                # Botón para descargar PDF
+                st.download_button(
+                    label=f"📥 Descargar Línea (PDF)",
+                    data=fig.to_image(format="pdf", width=1200, height=700),
+                    file_name=f"grafico_linea_{col_x_select}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+                    mime="application/pdf"
+                )
+                
+                graficos_html[f'linea_{col_x_select}'] = fig.to_html(include_plotlyjs='cdn')
+                graficos_figs[f'linea_{col_x_select}'] = fig
+                graficos_info.append(f"Línea: {col_x_select} vs {', '.join(col_y_select)}")
         
         # ===== SECCIÓN 3: TABLA DETALLADA =====
         st.markdown("## 📋 Datos Detallados")
         
-        # Seleccionar columnas para mostrar
-        columnas_mostrar = [col for col in [col_ubicacion, col_campana, col_impresiones, col_alcance, 
-                                            col_gasto, col_clics, col_resultados, col_ctr] 
-                           if col is not None]
+        # Opciones de filtrado
+        col_filter1, col_filter2 = st.columns(2)
         
-        if columnas_mostrar:
-            df_mostrar = df_filtrado[columnas_mostrar].copy()
-            
-            # Formatear números
-            for col in df_mostrar.columns:
-                if df_mostrar[col].dtype in ['float64', 'int64']:
-                    if col == col_gasto:
-                        df_mostrar[col] = df_mostrar[col].apply(lambda x: f"ARS {x:,.2f}" if pd.notna(x) and x > 0 else "N/A")
-                    elif col == col_ctr:
-                        df_mostrar[col] = df_mostrar[col].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "N/A")
-                    else:
-                        df_mostrar[col] = df_mostrar[col].apply(lambda x: f"{int(x):,}" if pd.notna(x) and x > 0 else "N/A")
-            
-            st.dataframe(df_mostrar, use_container_width=True, hide_index=True)
+        with col_filter1:
+            if categorical_cols:
+                selected_category = st.selectbox(
+                    "Filtrar por categoría:",
+                    ["Todos"] + categorical_cols,
+                    key="filter_cat"
+                )
+        
+        with col_filter2:
+            if categorical_cols and selected_category != "Todos":
+                unique_values = df[selected_category].unique()
+                selected_value = st.selectbox(
+                    f"Valores de {selected_category}:",
+                    unique_values,
+                    key="filter_val"
+                )
+        
+        # Aplicar filtro
+        if categorical_cols and selected_category != "Todos":
+            df_filtered = df[df[selected_category] == selected_value]
+        else:
+            df_filtered = df
+        
+        # Mostrar tabla
+        st.dataframe(df_filtered, use_container_width=True, height=400)
         
         # ===== SECCIÓN 4: DESCARGAS =====
         st.markdown("## 💾 Exportar Datos")
         
-        col_exp1, col_exp2 = st.columns(2)
+        col_exp1, col_exp2, col_exp3 = st.columns(3)
         
         with col_exp1:
-            csv = df_filtrado.to_csv(index=False, sep=';', encoding='latin-1')
+            csv = df_filtered.to_csv(index=False, sep=';', encoding='latin-1')
             st.download_button(
-                label="📥 Descargar CSV",
+                label="📥 Descargar CSV Filtrado",
                 data=csv,
-                file_name=f"marketing_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                file_name=f"data_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
                 mime="text/csv"
             )
         
         with col_exp2:
-            # Generar HTML con los gráficos interactivos
+            # Descargar todos los gráficos en un ZIP
             try:
-                html_content = """
+                import zipfile
+                
+                zip_buffer = io.BytesIO()
+                with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                    for nombre, fig in graficos_figs.items():
+                        try:
+                            pdf_data = fig.to_image(format="pdf", width=1000, height=600)
+                            zip_file.writestr(
+                                f"grafico_{nombre}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+                                pdf_data
+                            )
+                        except:
+                            pass
+                
+                zip_buffer.seek(0)
+                st.download_button(
+                    label="📥 Descargar Todos los PDFs (ZIP)",
+                    data=zip_buffer,
+                    file_name=f"graficos_completo_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip",
+                    mime="application/zip"
+                )
+            except Exception as e:
+                st.info("⚠️ Para descargar PDFs, se necesita kaleido")
+        
+        with col_exp3:
+            # Generar HTML con reportes
+            try:
+                html_content = f"""
                 <!DOCTYPE html>
                 <html>
                 <head>
                     <meta charset="utf-8">
-                    <title>Reporte de Marketing</title>
+                    <title>Reporte de Datos</title>
                     <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
                     <style>
-                        * { margin: 0; padding: 0; box-sizing: border-box; }
-                        body { 
+                        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+                        body {{ 
                             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
                             background: #f5f5f5;
                             padding: 20px;
-                        }
-                        .container { 
+                        }}
+                        .container {{ 
                             max-width: 1400px;
                             margin: 0 auto;
                             background: white;
                             padding: 30px;
                             border-radius: 8px;
                             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-                        }
-                        h1 { 
+                        }}
+                        h1 {{ 
                             color: #1f2937;
                             text-align: center;
                             margin-bottom: 10px;
                             font-size: 32px;
-                        }
-                        .fecha { 
+                        }}
+                        .fecha {{ 
                             text-align: center;
                             color: #666;
                             margin-bottom: 30px;
                             font-size: 14px;
-                        }
-                        h2 { 
+                        }}
+                        h2 {{ 
                             color: #1f2937;
                             margin-top: 30px;
                             margin-bottom: 20px;
                             border-bottom: 3px solid #3b82f6;
                             padding-bottom: 10px;
                             font-size: 20px;
-                        }
-                        .kpi-table {
-                            width: 100%;
-                            border-collapse: collapse;
-                            margin-bottom: 30px;
-                        }
-                        .kpi-table th {
-                            background: #3b82f6;
-                            color: white;
-                            padding: 12px;
-                            text-align: left;
-                            font-weight: 600;
-                        }
-                        .kpi-table td {
-                            padding: 12px;
-                            border-bottom: 1px solid #e5e7eb;
-                        }
-                        .kpi-table tr:nth-child(even) {
-                            background: #f9fafb;
-                        }
-                        .graficos-grid {
+                        }}
+                        .stats-grid {{
                             display: grid;
-                            grid-template-columns: 1fr 1fr;
+                            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                            gap: 20px;
+                            margin-bottom: 30px;
+                        }}
+                        .stat-card {{
+                            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                            color: white;
+                            padding: 20px;
+                            border-radius: 8px;
+                            text-align: center;
+                        }}
+                        .stat-value {{
+                            font-size: 28px;
+                            font-weight: bold;
+                            margin: 10px 0;
+                        }}
+                        .stat-label {{
+                            font-size: 12px;
+                            opacity: 0.9;
+                        }}
+                        .graficos-grid {{
+                            display: grid;
+                            grid-template-columns: 1fr;
                             gap: 30px;
                             margin: 30px 0;
-                        }
-                        .grafico-container {
+                        }}
+                        .grafico-container {{
                             background: #f9fafb;
                             padding: 20px;
                             border-radius: 8px;
                             border: 1px solid #e5e7eb;
-                        }
-                        .grafico-container > div {
+                            page-break-inside: avoid;
+                        }}
+                        .grafico-container > div {{
                             width: 100%;
-                        }
-                        @media (max-width: 768px) {
-                            .graficos-grid {
-                                grid-template-columns: 1fr;
-                            }
-                        }
-                        @media print {
-                            body { background: white; }
-                            .container { box-shadow: none; }
-                            .grafico-container { page-break-inside: avoid; }
-                        }
+                        }}
+                        @media print {{
+                            body {{ background: white; }}
+                            .container {{ box-shadow: none; }}
+                            .grafico-container {{ page-break-inside: avoid; }}
+                        }}
                     </style>
                 </head>
                 <body>
                     <div class="container">
-                        <h1>📊 Reporte de Marketing</h1>
-                        <div class="fecha">Generado: """ + datetime.now().strftime('%d/%m/%Y %H:%M') + """</div>
+                        <h1>📊 Reporte de Datos</h1>
+                        <div class="fecha">Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}</div>
                         
-                        <h2>📈 Resumen de KPIs</h2>
-                        <table class="kpi-table">
-                            <tr>
-                                <th>Métrica</th>
-                                <th>Valor</th>
-                            </tr>
-                """
-                
-                if kpi_alcance:
-                    html_content += f"<tr><td>Alcance</td><td>{int(kpi_alcance):,}</td></tr>"
-                if kpi_impresiones:
-                    html_content += f"<tr><td>Impresiones</td><td>{int(kpi_impresiones):,}</td></tr>"
-                if kpi_resultados:
-                    html_content += f"<tr><td>Resultados</td><td>{int(kpi_resultados)}</td></tr>"
-                if kpi_clics:
-                    html_content += f"<tr><td>Clics</td><td>{int(kpi_clics)}</td></tr>"
-                if kpi_ctr:
-                    html_content += f"<tr><td>CTR Promedio</td><td>{kpi_ctr:.2f}%</td></tr>"
-                if kpi_gasto:
-                    html_content += f"<tr><td>Gasto Total</td><td>ARS {kpi_gasto:,.2f}</td></tr>"
-                
-                html_content += """
-                        </table>
+                        <h2>📈 Estadísticas Generales</h2>
+                        <div class="stats-grid">
+                            <div class="stat-card">
+                                <div class="stat-label">Total de Filas</div>
+                                <div class="stat-value">{len(df):,}</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-label">Columnas Numéricas</div>
+                                <div class="stat-value">{len(numeric_cols)}</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-label">Columnas Categóricas</div>
+                                <div class="stat-value">{len(categorical_cols)}</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-label">Valores Nulos</div>
+                                <div class="stat-value">{df.isnull().sum().sum()}</div>
+                            </div>
+                        </div>
                         
                         <h2>📊 Gráficos Detallados</h2>
                         <div class="graficos-grid">
@@ -385,21 +476,12 @@ if uploaded_file is not None:
                 st.download_button(
                     label="📥 Descargar Reporte (HTML)",
                     data=html_content,
-                    file_name=f"marketing_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
+                    file_name=f"data_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
                     mime="text/html"
                 )
                 
             except Exception as e:
                 st.error(f"❌ Error al generar reporte: {str(e)}")
-        
-        # Info del archivo
-        st.sidebar.markdown("---")
-        st.sidebar.info(f"""
-        📁 **Información del archivo:**
-        - Filas: {len(df_clean):,}
-        - Columnas: {len(df_clean.columns)}
-        - Tamaño: {uploaded_file.size / 1024:.2f} KB
-        """)
     
     except Exception as e:
         st.error(f"❌ Error al procesar el archivo: {str(e)}")
@@ -410,15 +492,25 @@ else:
     
     st.markdown("""
     ### 📚 Características:
-    - ✅ Detección automática de columnas
-    - ✅ Gráficos interactivos (Plotly)
-    - ✅ Filtros dinámicos
-    - ✅ Exportación a CSV
-    - ✅ Exportación a HTML (con gráficos interactivos)
-    - ✅ Adaptable a cualquier estructura de datos
+    - ✅ **Adaptación automática** a cualquier tipo de datos
+    - ✅ Detección inteligente de columnas numéricas y categóricas
+    - ✅ Gráficos dinámicos e interactivos (Plotly)
+    - ✅ **Descarga individual de gráficos en PDF**
+    - ✅ **Descarga todos los gráficos en ZIP**
+    - ✅ Filtros personalizables
+    - ✅ Estadísticas automáticas
+    - ✅ Exportación a CSV e HTML
+    - ✅ Reportes profesionales con estilos
     
-    ### 📋 Formato esperado:
-    - Separador: `;` o `,`
+    ### 📋 Formatos soportados:
+    - Separadores: `;` o `,`
     - Encoding: UTF-8 o Latin-1
-    - Incluye columnas como: Ubicación, Impresiones, Alcance, Gasto, Resultados, CTR
+    - Cualquier estructura de datos (ventas, analytics, finanzas, etc.)
+    
+    ### 🎯 Casos de uso:
+    - 📊 Dashboard de marketing y publicidad
+    - 💰 Análisis de ventas y finanzas
+    - 📈 Reportes de desempeño
+    - 🎯 Métricas de negocio
+    - 📉 Análisis de datos exploratorio
     """)
